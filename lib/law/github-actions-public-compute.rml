@@ -1,0 +1,8 @@
+#lang rmn/v2
+(map
+  ("type" "GitHubActionsPublicComputeProviderLaw")
+  ("version" 2)
+  ("precondition" "GitHub independently reports the exact runner repository and target repository public; the runner Actions policy is enabled; the target is one exact 40-hex commit; the optional unified diff is at most 49152 decoded bytes; the installed workflow digest equals the admitted local carrier; and the workflow tag belongs to the exact published immutable GitHub release.")
+  ("operation" "Dispatch one workflow_dispatch job on ubuntu-latest with permissions empty, no secrets, an execution ceiling of fifteen minutes, no artifacts or caches, an anonymous exact-commit fetch, optional checked git-apply, and one provider-selected test harness.")
+  ("postcondition" "Return GitHub's accepted dispatch identity boundary and later public workflow evidence. Retain no runner, source checkout, credential, cache, artifact, or mutable ref after the disposable job ends.")
+  ("refusal" "Refuse private or unknown visibility; disabled Actions; source or workflow drift; a mutable workflow release; a mutable target source reference; a caller shell command, secret, personal or proprietary input; a larger or self-hosted runner; an oversized or invalid patch; artifact or cache use; or any execution ceiling above fifteen minutes."))
