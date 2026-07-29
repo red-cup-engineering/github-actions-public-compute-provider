@@ -3,29 +3,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { githubApi } from "@red-cup-engineering/github-services-section";
 import { admitPublicTestDispatch, MAX_PATCH_BYTES, WORKFLOW_COMMIT, WORKFLOW_GIT_BLOB, WORKFLOW_PATH, WORKFLOW_REF, WORKFLOW_RELEASE_ID, WORKFLOW_SHA256 } from "../src/admission.mjs";
 
 function usage() {
   return "usage: dispatch-public-test-compute OWNER/REPO 40_HEX_COMMIT [PATCH_FILE]";
-}
-
-async function github(path, { method = "GET", body } = {}) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("GITHUB_TOKEN is required");
-  const response = await fetch(`https://api.github.com${path}`, {
-    method,
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2026-03-10",
-      "User-Agent": "harmonious-union-public-compute-dispatcher",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) throw new Error(`GitHub ${method} ${path} refused with ${response.status}`);
-  if (response.status === 204) return null;
-  return response.json();
 }
 
 const [targetRepository, targetCommit, patchPath, ...extra] = process.argv.slice(2);
@@ -38,14 +20,15 @@ if (config.workflowRef !== WORKFLOW_REF || config.workflowCommit !== WORKFLOW_CO
 
 const patch = patchPath ? await readFile(patchPath) : Buffer.alloc(0);
 if (patch.length > MAX_PATCH_BYTES) throw new Error(`patch exceeds ${MAX_PATCH_BYTES} bytes`);
+const github = githubApi();
 const [runner, policy, target, commit, workflowRef, workflow, release] = await Promise.all([
-  github(`/repos/${runnerRepository}`),
-  github(`/repos/${runnerRepository}/actions/permissions`),
-  github(`/repos/${targetRepository}`),
-  github(`/repos/${targetRepository}/commits/${targetCommit}`),
-  github(`/repos/${runnerRepository}/git/ref/tags/${encodeURIComponent(WORKFLOW_REF)}`),
-  github(`/repos/${runnerRepository}/contents/${WORKFLOW_PATH}?ref=${WORKFLOW_COMMIT}`),
-  github(`/repos/${runnerRepository}/releases/tags/${encodeURIComponent(WORKFLOW_REF)}`),
+  github.getRepo(runnerRepository),
+  github.getActionsPermissions(runnerRepository),
+  github.getRepo(targetRepository),
+  github.getCommit(targetRepository, targetCommit),
+  github.getTagRef(runnerRepository, WORKFLOW_REF),
+  github.getContentRecord(runnerRepository, WORKFLOW_COMMIT, WORKFLOW_PATH),
+  github.getReleaseByTag(runnerRepository, WORKFLOW_REF),
 ]);
 if (commit.sha?.toLowerCase() !== targetCommit.toLowerCase()) throw new Error("target commit identity drifted");
 const remoteWorkflow = workflow?.encoding === "base64" && typeof workflow.content === "string" ? Buffer.from(workflow.content.replace(/\s/gu, ""), "base64") : null;
@@ -71,16 +54,10 @@ const decision = admitPublicTestDispatch({
 });
 if (!decision.admitted) throw new Error(`dispatch refused: ${decision.reason}`);
 
-await github(`/repos/${runnerRepository}/actions/workflows/${encodeURIComponent(basename(WORKFLOW_PATH))}/dispatches`, {
-  method: "POST",
-  body: {
-    ref: WORKFLOW_REF,
-    inputs: {
-      target_repository: decision.targetRepository,
-      target_commit: decision.targetCommit,
-      patch_base64: patch.toString("base64"),
-    },
-  },
+await github.dispatchWorkflow(runnerRepository, basename(WORKFLOW_PATH), WORKFLOW_REF, {
+  target_repository: decision.targetRepository,
+  target_commit: decision.targetCommit,
+  patch_base64: patch.toString("base64"),
 });
 process.stdout.write(`${JSON.stringify({
   type: "GitHubPublicTestComputeDispatchAccepted",

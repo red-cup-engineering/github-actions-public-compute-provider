@@ -10,6 +10,9 @@
   "exports": {
     ".": "./src/admission.mjs"
   },
+  "dependencies": {
+    "@red-cup-engineering/github-services-section": "workspace:*"
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },

@@ -6,6 +6,11 @@ durable server. Each dispatch names an immutable commit in a public repository
 and may add one base64-encoded unified diff of at most 48 KiB. The workflow
 chooses a known test harness and stops after 15 minutes.
 
+Dispatch uses the independently owned `github-services-section` provider for
+every GitHub REST read and workflow dispatch. The caller supplies no raw
+GitHub URL or request shape; provider credential custody is through
+`GITHUB_SERVICES_TOKEN`.
+
 Dispatch uses the `bounded-public-test-v1` tag only after resolving it to the
 admitted commit and verifying both the Git blob identity and SHA-256 bytes of
 the remote workflow against the provider-carried workflow. The tag is bound to
