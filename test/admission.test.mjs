@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { admitPublicTestDispatch, MAX_PATCH_BYTES, WORKFLOW_COMMIT, WORKFLOW_GIT_BLOB, WORKFLOW_PATH, WORKFLOW_REF, WORKFLOW_RELEASE_ID, WORKFLOW_SHA256 } from "../src/admission.mjs";
+import { admittedRunnerRepository, admitPublicTestDispatch, MAX_PATCH_BYTES, WORKFLOW_COMMIT, WORKFLOW_GIT_BLOB, WORKFLOW_PATH, WORKFLOW_REF, WORKFLOW_RELEASE_ID, WORKFLOW_SHA256 } from "../src/admission.mjs";
 
 const valid = Object.freeze({
   runnerRepository: "union/public-runner",
@@ -35,6 +35,13 @@ test("admits exact public standard-runner test work", () => {
     runner: "ubuntu-latest",
     timeoutMinutes: 15,
   });
+});
+
+test("the admitted runner cannot be replaced by ambient process configuration", () => {
+  const config = { runnerRepository: "emsenn/union-free-compute-runner" };
+  assert.equal(admittedRunnerRepository(config, {}), config.runnerRepository);
+  assert.equal(admittedRunnerRepository(config, { GITHUB_PUBLIC_COMPUTE_REPO: config.runnerRepository }), config.runnerRepository);
+  assert.throws(() => admittedRunnerRepository(config, { GITHUB_PUBLIC_COMPUTE_REPO: "emsenn/bounty-runner" }), /may not override/u);
 });
 
 for (const [name, change, reason] of [

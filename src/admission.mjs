@@ -9,6 +9,18 @@ export const WORKFLOW_RELEASE_ID = 358_118_180;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const COMMIT = /^[0-9a-f]{40}$/i;
 
+export function admittedRunnerRepository(config, environment = process.env) {
+  const configured = config?.runnerRepository;
+  if (typeof configured !== "string" || !REPOSITORY.test(configured)) {
+    throw new Error("configured public-compute runner repository is invalid");
+  }
+  const override = environment.GITHUB_PUBLIC_COMPUTE_REPO;
+  if (override !== undefined && override !== configured) {
+    throw new Error("GITHUB_PUBLIC_COMPUTE_REPO may not override the admitted public-compute runner");
+  }
+  return configured;
+}
+
 function refuse(reason) {
   return Object.freeze({ admitted: false, reason });
 }

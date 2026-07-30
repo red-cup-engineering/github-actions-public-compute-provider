@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { githubApi } from "@red-cup-engineering/github-services-section";
-import { admitPublicTestDispatch, MAX_PATCH_BYTES, WORKFLOW_COMMIT, WORKFLOW_GIT_BLOB, WORKFLOW_PATH, WORKFLOW_REF, WORKFLOW_RELEASE_ID, WORKFLOW_SHA256 } from "../src/admission.mjs";
+import { admittedRunnerRepository, admitPublicTestDispatch, MAX_PATCH_BYTES, WORKFLOW_COMMIT, WORKFLOW_GIT_BLOB, WORKFLOW_PATH, WORKFLOW_REF, WORKFLOW_RELEASE_ID, WORKFLOW_SHA256 } from "../src/admission.mjs";
 
 function usage() {
   return "usage: dispatch-public-test-compute OWNER/REPO 40_HEX_COMMIT [PATCH_FILE]";
@@ -13,7 +13,7 @@ function usage() {
 const [targetRepository, targetCommit, patchPath, ...extra] = process.argv.slice(2);
 if (!targetRepository || !targetCommit || extra.length) throw new Error(usage());
 const config = JSON.parse(await readFile(fileURLToPath(new URL("../content/config/github-public-compute.json", import.meta.url)), "utf8"));
-const runnerRepository = process.env.GITHUB_PUBLIC_COMPUTE_REPO ?? config.runnerRepository;
+const runnerRepository = admittedRunnerRepository(config);
 const workflowBytes = await readFile(fileURLToPath(new URL(`../content/workflows/${basename(WORKFLOW_PATH)}`, import.meta.url)));
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 if (config.workflowRef !== WORKFLOW_REF || config.workflowCommit !== WORKFLOW_COMMIT || config.workflowGitBlob !== WORKFLOW_GIT_BLOB || config.workflowSha256 !== WORKFLOW_SHA256 || config.workflowReleaseId !== WORKFLOW_RELEASE_ID || sha256(workflowBytes) !== WORKFLOW_SHA256) throw new Error("local public-compute workflow binding is not the admitted immutable revision");
