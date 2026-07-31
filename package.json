@@ -1,5 +1,5 @@
 {
-  "name": "@free-compute/github-actions-public-compute-provider",
+  "name": "@red-cup-engineering/github-actions-public-compute-provider",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     ".": "./src/admission.mjs"
   },
   "dependencies": {
-    "@red-cup-engineering/github-services-section": "workspace:*"
+    "@red-cup-engineering/github-services-section": "1.0.0"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs"
@@ -19,37 +19,5 @@
   "engines": {
     "node": ">=20"
   },
-  "x-agentic-metro-enterprise": {
-    "node-id": "github-actions-public-compute-provider",
-    "owners": [
-      "561-group",
-      "cloud-compute-services-section"
-    ],
-    "membrane": {
-      "law": "lib/",
-      "lasting-instances": "content/",
-      "append-only-instances": "data/"
-    },
-    "admission": "one immutable public source commit and optional bounded patch dispatched to one public repository workflow on a standard ubuntu-latest GitHub-hosted runner",
-    "refusal": "private or unknown repository, mutable ref, larger or self-hosted runner, secret-bearing workflow, artifact, cache, caller shell command, oversized patch, absent Actions policy evidence, or more than fifteen execution minutes"
-  },
-  "license": "LicenseRef-561Group-1.0",
-  "x-semiotic-voxel": {
-    "profile": "org.harmonious-union.semiotic-voxel.v1",
-    "owner": "free-compute",
-    "kind": "capability-cell",
-    "actor": "urn:ame:github-actions-public-compute-provider",
-    "operations": [
-      "github-actions-public-compute-provider"
-    ],
-    "capabilities": [
-      {
-        "capability": "github-actions-public-compute-provider",
-        "faces": [
-          "github-actions-public-compute-provider"
-        ]
-      }
-    ],
-    "package": "@free-compute/github-actions-public-compute-provider"
-  }
+  "license": "LicenseRef-561Group-1.0"
 }

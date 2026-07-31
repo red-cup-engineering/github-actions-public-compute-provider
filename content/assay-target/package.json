@@ -1,27 +1,9 @@
 {
-  "name": "@free-compute/union-public-compute-assay",
+  "name": "@red-cup-engineering/union-public-compute-assay",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs"
-  },
-  "x-semiotic-voxel": {
-    "profile": "org.harmonious-union.semiotic-voxel.v1",
-    "owner": "free-compute",
-    "kind": "capability-cell",
-    "actor": "urn:ame:union-public-compute-assay",
-    "operations": [
-      "union-public-compute-assay"
-    ],
-    "capabilities": [
-      {
-        "capability": "union-public-compute-assay",
-        "faces": [
-          "union-public-compute-assay"
-        ]
-      }
-    ],
-    "package": "@free-compute/union-public-compute-assay"
   }
 }
