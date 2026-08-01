@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A fail-closed dispatcher and public workflow for zero-cash standard GitHub-hosted test compute.",
   "bin": {
-    "dispatch-public-test-compute": "./bin/dispatch-public-test-compute.mjs"
+    "dispatch-public-test-compute": "./scripts/dispatch-public-test-compute.mjs"
   },
   "exports": {
     ".": "./src/admission.mjs"
