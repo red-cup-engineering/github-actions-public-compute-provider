@@ -96,3 +96,37 @@ export async function dispatchPublicTestCompute(input, {
     timeoutMinutes: decision.timeoutMinutes,
   });
 }
+
+/** Read recent outcomes from the original immutable public workflow.
+ * This is an actual bounded provider read, not an attribution of runs to a
+ * requesting actor: GitHub dispatch does not return a correlated run ID.
+ * Never infer success from an absent conclusion or a run that is still queued. */
+export async function observePublicTestComputeRuns(input = {}, {
+  environment = process.env,
+  read = readFile,
+  github: githubPort,
+} = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 0)
+    throw new TypeError('Public test compute runs accepts no caller-selected repository or workflow');
+  const config = JSON.parse(await read(CONFIG_FILE, 'utf8'));
+  const runnerRepository = admittedRunnerRepository(config, environment);
+  const github = githubPort ?? (await import('@red-cup-engineering/github-services-section')).githubApi();
+  const runner = await github.getRepo(runnerRepository);
+  if (runner?.visibility !== 'public')
+    throw new TypeError('Public test compute runs requires its original public runner repository');
+  const observed = await github.listRuns(runnerRepository, basename(WORKFLOW_PATH), 20);
+  if (!Array.isArray(observed) || observed.length > 20 || observed.some(run =>
+    !Number.isSafeInteger(run?.id) || run.id <= 0 || typeof run.status !== 'string'
+    || (run.conclusion !== null && run.conclusion !== undefined && typeof run.conclusion !== 'string')))
+    throw new TypeError('GitHub public test compute returned invalid bounded run observations');
+  return Object.freeze({
+    type: 'GitHubPublicTestComputeRunsObserved',
+    runnerRepository, workflowRef: WORKFLOW_REF, workflowCommit: WORKFLOW_COMMIT,
+    // GitHub's completion describes a runner conclusion; it does not admit
+    // independent customer acceptance or establish the original dispatch actor.
+    runs: Object.freeze(observed.map(run => Object.freeze({
+      runId: run.id, status: run.status, conclusion: run.conclusion ?? null,
+      createdAt: run.createdAt ?? null, displayTitle: run.displayTitle ?? null,
+    }))),
+  });
+}
