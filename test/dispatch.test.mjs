@@ -53,7 +53,7 @@ test('native MetroPlat application installs same producer; no caller-controlled 
     calls.push({input,environment:options.environment});
     return dispatchPublicTestCompute(input,{...fixtures,github:f.port});
   },environment:{GITHUB_PUBLIC_COMPUTE_REPO:'emsenn/union-free-compute-runner'}});
-  assert.equal(operations.length,1);
+  assert.equal(operations.length,2);
   assert.equal(operations[0].verb,'public-test-compute-dispatch');
   assert.equal(operations[0].effects.replay,'coordinated');
   const result=await operations[0].execute(request);
@@ -92,4 +92,41 @@ test('uncertain acknowledgement fails closed, without retry or false receipt',as
   const f=githubFixture({dispatchWorkflow:async()=>{attempts++;throw new Error('unknown provider acknowledgement')}});
   await assert.rejects(()=>dispatchPublicTestCompute(request,{...fixtures,github:f.port}),/unknown provider acknowledgement/u);
   assert.equal(attempts,1);
+});
+
+test('native world can read actual queued, completed and failed workflow results from the original provider',async()=>{
+  const {observePublicTestComputeRuns}=await import('../src/dispatch.mjs');
+  const calls=[];
+  const github={
+    async getRepo(r){calls.push(['repo',r]);return {visibility:'public'};},
+    async listRuns(r,w,n){calls.push(['runs',r,w,n]);return [
+      {id:11,status:'queued',conclusion:null,createdAt:'2026-10-18T20:00:00Z',displayTitle:'public test a/b@ab'},
+      {id:12,status:'completed',conclusion:'success',createdAt:'2026-10-18T20:01:00Z',displayTitle:'public test a/c@cd'},
+      {id:13,status:'completed',conclusion:'failure',createdAt:'2026-10-18T20:02:00Z',displayTitle:'public test a/d@ef'},
+    ];},
+  };
+  const result=await observePublicTestComputeRuns({}, {environment:{},github});
+  assert.equal(result.type,'GitHubPublicTestComputeRunsObserved');
+  assert.equal(result.runs.length,3);
+  assert.equal(result.runs[0].status,'queued');
+  assert.equal(result.runs[0].conclusion,null);
+  assert.equal(result.runs[1].conclusion,'success');
+  assert.equal(result.runs[2].conclusion,'failure');
+  assert.deepEqual(calls[1],['runs','emsenn/union-free-compute-runner','bounded-public-test.yml',20]);
+  const operations=application.operations(null, {observeRuns:async(input,ports)=>observePublicTestComputeRuns(input,{...ports,github})});
+  assert.equal(operations[1].verb,'public-test-compute-runs');
+  assert.equal(operations[1].effects.replay,'safe');
+  assert.equal((await operations[1].execute({})).runs.length,3);
+});
+
+test('run reading rejects caller-chosen sources, private runners and malformed provider values',async()=>{
+  const {observePublicTestComputeRuns}=await import('../src/dispatch.mjs');
+  let calls=0;
+  const github={getRepo:async()=>{calls++;return {visibility:'public'};},listRuns:async()=>{calls++;return [];}};
+  await assert.rejects(()=>observePublicTestComputeRuns({runnerRepository:'arbitrary/private'},{github,environment:{}}),/no caller-selected/u);
+  assert.equal(calls,0);
+  await assert.rejects(()=>observePublicTestComputeRuns({}, {github,environment:{GITHUB_PUBLIC_COMPUTE_REPO:'attacker/repo'}}),/may not override/u);
+  assert.equal(calls,0);
+  await assert.rejects(()=>observePublicTestComputeRuns({}, {github:{getRepo:async()=>({visibility:'private'}),listRuns:async()=>{throw Error('must not list');}},environment:{}}),/original public runner/u);
+  await assert.rejects(()=>observePublicTestComputeRuns({}, {github:{getRepo:async()=>({visibility:'public'}),listRuns:async()=>[{id:21,status:null,conclusion:null}]},environment:{}}),/invalid bounded run/u);
 });
