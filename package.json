@@ -25,5 +25,9 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "LicenseRef-561Group-1.0"
+  "license": "MIT",
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/561-group/.github/blob/main/TIPS.md"
+  }
 }
