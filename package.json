@@ -1,6 +1,6 @@
 {
   "name": "@red-cup-engineering/github-actions-public-compute-provider",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "A fail-closed dispatcher and public workflow for zero-cash standard GitHub-hosted test compute.",
   "repository": {
