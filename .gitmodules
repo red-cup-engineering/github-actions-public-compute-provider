@@ -1,4 +1,4 @@
-[submodule "content/assay-target"]
-	path = content/assay-target
+[submodule "content/union-public-compute-assay"]
+	path = content/union-public-compute-assay
 	url = https://github.com/red-cup-engineering/union-public-compute-assay.git
 	branch = main
