@@ -1,0 +1,29 @@
+{
+  "runnerRepository": "red-cup-engineering/union-free-compute-runner",
+  "workflowPath": ".github/workflows/bounded-public-test.yml",
+  "workflowRef": "7f5014cf86d3ef18a7702d6355a69c3037a5623b",
+  "workflowCommit": "7f5014cf86d3ef18a7702d6355a69c3037a5623b",
+  "workflowGitBlob": "412b2c0036dac0245c40f4b536318c4c04397e36",
+  "workflowSha256": "108fb0b9f0e3c7eccd2199149102e1ed9b90521bc932e73bbf3905e36de0911d",
+  "requiredVisibility": "public",
+  "allowedStandardRunners": [
+    "ubuntu-latest",
+    "ubuntu-24.04-arm",
+    "windows-latest",
+    "windows-11-arm",
+    "macos-latest",
+    "macos-15-intel"
+  ],
+  "forbiddenPaidLabelSuffixes": [
+    "-large",
+    "-xlarge"
+  ],
+  "maximumConcurrentStandardJobs": 20,
+  "maximumConcurrentMacosJobs": 5,
+  "timeoutMinutes": 15,
+  "artifacts": false,
+  "caches": false,
+  "secrets": false,
+  "workflowTask": "bounded-public-test",
+  "workflowEnvironment": "bounded-public-test"
+}

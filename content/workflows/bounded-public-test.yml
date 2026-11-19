@@ -1,0 +1,258 @@
+name: bounded-public-test
+run-name: "public test ${{ inputs.target_repository || github.event.deployment.payload.target_repository }}@${{ inputs.target_commit || github.event.deployment.payload.target_commit }}"
+
+on:
+  deployment:
+  workflow_dispatch:
+    inputs:
+      target_repository:
+        description: Public owner/repository
+        required: true
+        type: string
+      target_commit:
+        description: Exact 40-hex commit
+        required: true
+        type: string
+      patch_base64:
+        description: Optional base64 unified diff, at most 48 KiB decoded
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+jobs:
+  test:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'deployment' &&
+      github.event.deployment.task == 'bounded-public-test' &&
+      github.event.deployment.environment == 'bounded-public-test' &&
+      github.event.deployment.production_environment == false &&
+      github.event.deployment.transient_environment == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Admit dispatch identity and bounded input
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          def admit_deployment(deployment, task):
+              if not isinstance(deployment, dict):
+                  raise SystemExit("REFUSED_INVALID_DEPLOYMENT")
+              if (deployment.get("task") != task or
+                  deployment.get("environment") != task or
+                  deployment.get("production_environment") is not False or
+                  deployment.get("transient_environment") is not True):
+                  raise SystemExit("REFUSED_DEPLOYMENT_SCOPE")
+              revision = deployment.get("ref")
+              if (not isinstance(revision, str) or
+                  not re.fullmatch(r"[0-9a-fA-F]{40}", revision) or
+                  revision.lower() != str(deployment.get("sha", "")).lower() or
+                  revision.lower() != os.environ["GITHUB_SHA"].lower()):
+                  raise SystemExit("REFUSED_WORKFLOW_REVISION")
+
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as source:
+              event = json.load(source)
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          if event_name == "deployment":
+              deployment = event.get("deployment")
+              admit_deployment(deployment, "bounded-public-test")
+              inputs = deployment.get("payload")
+          elif event_name == "workflow_dispatch":
+              inputs = event.get("inputs")
+          else:
+              raise SystemExit("REFUSED_DISPATCH_EVENT")
+          chunk_fields = {"patch_deployment_ids", "patch_sha256", "patch_bytes"}
+          if (not isinstance(inputs, dict) or
+              not {"target_repository", "target_commit"}.issubset(inputs) or
+              set(inputs) - {"target_repository", "target_commit", "patch_base64"} - chunk_fields):
+              raise SystemExit("REFUSED_INVALID_INPUT")
+          repository = inputs["target_repository"]
+          commit = inputs["target_commit"]
+          if (not isinstance(repository, str) or
+              not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)):
+              raise SystemExit("REFUSED_INVALID_REPOSITORY")
+          if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+              raise SystemExit("REFUSED_MUTABLE_COMMIT")
+          if chunk_fields.intersection(inputs):
+              if not chunk_fields.issubset(inputs) or "patch_base64" in inputs:
+                  raise SystemExit("REFUSED_PATCH_INPUT_SHAPE")
+              deployment_ids = inputs["patch_deployment_ids"]
+              expected_bytes = inputs["patch_bytes"]
+              expected_digest = inputs["patch_sha256"]
+              if (not isinstance(deployment_ids, list) or
+                  not 1 <= len(deployment_ids) <= 6 or
+                  any(type(value) is not int or value <= 0 for value in deployment_ids) or
+                  len(set(deployment_ids)) != len(deployment_ids) or
+                  type(expected_bytes) is not int or not 1 <= expected_bytes <= 49152 or
+                  not isinstance(expected_digest, str) or
+                  not re.fullmatch(r"[0-9a-f]{64}", expected_digest)):
+                  raise SystemExit("REFUSED_PATCH_INPUT_SHAPE")
+              chunks = []
+              for index, deployment_id in enumerate(deployment_ids):
+                  url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/deployments/{deployment_id}"
+                  request = urllib.request.Request(url, headers={
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "union-free-compute-runner",
+                  })
+                  try:
+                      with urllib.request.urlopen(request, timeout=10) as response:
+                          received = response.read(65537)
+                      if len(received) > 65536:
+                          raise ValueError("oversized deployment response")
+                      part = json.loads(received)
+                  except (OSError, ValueError, urllib.error.URLError):
+                      raise SystemExit("REFUSED_PATCH_INPUT_FETCH")
+                  admit_deployment(part, "bounded-public-test-input")
+                  fragment = part.get("payload")
+                  if (type(part.get("id")) is not int or part["id"] != deployment_id or
+                      not isinstance(fragment, dict) or set(fragment) != {"index", "data"} or
+                      type(fragment["index"]) is not int or fragment["index"] != index):
+                      raise SystemExit("REFUSED_PATCH_INPUT_IDENTITY")
+                  data = fragment["data"]
+                  if (not isinstance(data, str) or not 1 <= len(data) <= 12000 or
+                      len(data) % 4):
+                      raise SystemExit("REFUSED_PATCH_INPUT_ENCODING")
+                  try:
+                      chunk = base64.b64decode(data, validate=True)
+                  except (ValueError, binascii.Error):
+                      raise SystemExit("REFUSED_PATCH_INPUT_ENCODING")
+                  if base64.b64encode(chunk).decode("ascii") != data:
+                      raise SystemExit("REFUSED_PATCH_INPUT_ENCODING")
+                  chunks.append(data)
+              patch = "".join(chunks)
+          else:
+              patch = inputs.get("patch_base64", "")
+          if not isinstance(patch, str) or len(patch) > 65536:
+              raise SystemExit("REFUSED_PATCH_TOO_LARGE")
+          if event_name == "workflow_dispatch":
+              patch = patch.replace("\n", "")
+          try:
+              decoded = base64.b64decode(patch, validate=True)
+          except (ValueError, binascii.Error):
+              raise SystemExit("REFUSED_INVALID_PATCH_ENCODING")
+          if len(decoded) > 49152:
+              raise SystemExit("REFUSED_PATCH_TOO_LARGE")
+          if chunk_fields.intersection(inputs) and (
+              len(decoded) != expected_bytes or hashlib.sha256(decoded).hexdigest() != expected_digest
+          ):
+              raise SystemExit("REFUSED_PATCH_INPUT_DIGEST")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as target:
+              target.write(f"TARGET_REPOSITORY={repository}\nTARGET_COMMIT={commit.lower()}\nPATCH_BASE64={patch}\n")
+          PY
+
+      - name: Bind runner work and tool state to application data
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_workspace=$(realpath -e "$GITHUB_WORKSPACE")
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          runner_data="$runner_workspace/data/logs/bounded-public-test-logs/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          runner_paths=("$runner_workspace/data" "$runner_workspace/data/logs"
+            "$runner_workspace/data/logs/bounded-public-test-logs" "$runner_data"
+            "$runner_data"/{npm-cache,pip-cache,python-user,cargo,go,go-cache,go-modules,cache,state,config,data,temporary})
+          for selected_path in "${runner_paths[@]}"; do
+            if [[ -e "$selected_path" || -L "$selected_path" ]]; then
+              [[ -d "$selected_path" && ! -L "$selected_path" && -O "$selected_path" ]] || exit 1
+            fi
+          done
+          mkdir -p "${runner_paths[@]}"
+          for selected_path in "${runner_paths[@]}"; do
+            [[ $(realpath -e "$selected_path") == "$selected_path" ]] || exit 1
+          done
+          [[ ! -e "$runner_data/work" && ! -L "$runner_data/work" ]]
+          [[ ! -e "$runner_data/candidate.diff" && ! -L "$runner_data/candidate.diff" ]]
+          {
+            printf 'RUNNER_DATA=%s\n' "$runner_data"
+            printf 'RUNNER_WORK=%s\n' "$runner_data/work"
+            printf 'RUNNER_PATCH=%s\n' "$runner_data/candidate.diff"
+            printf 'npm_config_cache=%s\n' "$runner_data/npm-cache"
+            printf 'PIP_CACHE_DIR=%s\n' "$runner_data/pip-cache"
+            printf 'PYTHONUSERBASE=%s\n' "$runner_data/python-user"
+            printf 'CARGO_HOME=%s\n' "$runner_data/cargo"
+            printf 'GOPATH=%s\n' "$runner_data/go"
+            printf 'GOCACHE=%s\n' "$runner_data/go-cache"
+            printf 'GOMODCACHE=%s\n' "$runner_data/go-modules"
+            printf 'XDG_CACHE_HOME=%s\n' "$runner_data/cache"
+            printf 'XDG_STATE_HOME=%s\n' "$runner_data/state"
+            printf 'XDG_CONFIG_HOME=%s\n' "$runner_data/config"
+            printf 'XDG_DATA_HOME=%s\n' "$runner_data/data"
+            printf 'TMPDIR=%s\n' "$runner_data/temporary"
+          } >> "$GITHUB_ENV"
+
+      - name: Admit immutable public source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "REFUSED_INVALID_REPOSITORY"
+            exit 64
+          fi
+          if [[ ! "$TARGET_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "REFUSED_MUTABLE_COMMIT"
+            exit 64
+          fi
+          git init --quiet "$RUNNER_WORK"
+          git -C "$RUNNER_WORK" remote add origin "https://github.com/${TARGET_REPOSITORY}.git"
+          git -C "$RUNNER_WORK" -c protocol.file.allow=never fetch --quiet --depth=1 origin "$TARGET_COMMIT"
+          test "$(git -C "$RUNNER_WORK" rev-parse FETCH_HEAD)" = "${TARGET_COMMIT,,}"
+          git -C "$RUNNER_WORK" -c advice.detachedHead=false checkout --quiet --detach FETCH_HEAD
+
+      - name: Admit bounded candidate patch
+        if: ${{ env.PATCH_BASE64 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_BASE64" | base64 --decode > "$RUNNER_PATCH"
+          patch_bytes=$(wc -c < "$RUNNER_PATCH")
+          if (( patch_bytes > 49152 )); then
+            echo "REFUSED_PATCH_TOO_LARGE"
+            exit 64
+          fi
+          git -C "$RUNNER_WORK" apply --check "$RUNNER_PATCH"
+          git -C "$RUNNER_WORK" apply --whitespace=nowarn "$RUNNER_PATCH"
+
+      - name: Run one detected test harness
+        working-directory: ${{ env.RUNNER_WORK }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+            npm test
+          elif [[ -f package.json ]]; then
+            npm install --no-audit --no-fund
+            npm test
+          elif [[ -f pyproject.toml ]]; then
+            python -m venv --system-site-packages "$RUNNER_DATA/python-environment"
+            "$RUNNER_DATA/python-environment/bin/python" -m pip install --disable-pip-version-check -e .
+            "$RUNNER_DATA/python-environment/bin/python" -m pytest -q
+          elif [[ -f requirements.txt ]]; then
+            python -m venv --system-site-packages "$RUNNER_DATA/python-environment"
+            "$RUNNER_DATA/python-environment/bin/python" -m pip install --disable-pip-version-check -r requirements.txt
+            "$RUNNER_DATA/python-environment/bin/python" -m pytest -q
+          elif [[ -f Cargo.toml ]]; then
+            # Select the installed compiler without letting rustup update its supplier home.
+            cargo_command=$(rustup which cargo)
+            export RUSTC="$(rustup which rustc)" RUSTDOC="$(rustup which rustdoc)"
+            "$cargo_command" test --locked
+          elif [[ -f go.mod ]]; then
+            go test ./...
+          elif [[ -f Makefile ]] && grep -Eq '^[.]?PHONY:.*test|^test:' Makefile; then
+            make test
+          else
+            echo "REFUSED_NO_KNOWN_TEST_HARNESS"
+            exit 64
+          fi
